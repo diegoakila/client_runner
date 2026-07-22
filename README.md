@@ -64,6 +64,16 @@ This opens the app in your browser at `http://localhost:8501`.
 
 If you change anything about the query, the client, or the month after a dry-run, the "Run" button is disabled again until you re-run the dry-run — this prevents running a query you never actually previewed.
 
+## Manual runs from Colab
+
+The Streamlit app is meant for interactive, one-off use. If you'd rather run a client manually from a Colab notebook (no local Python setup, no scheduling), use [`colab_runner.ipynb`](colab_runner.ipynb):
+
+1. Open it in Colab (upload it, or open directly from GitHub via `File > Open notebook > GitHub` and paste the repo URL).
+2. Run the cells top to bottom. The first cell clones this repo and authenticates using your own Google account via Colab's built-in auth flow (`google.colab.auth.authenticate_user()`) — no credentials are stored in the notebook.
+3. Pick a client and month, review the dry-run output, then set `CONFIRM = True` in the last cell and re-run it to actually append.
+
+It reuses the exact same logic as the Streamlit app (both import `pipeline_core.py`), just with a notebook-shaped, step-by-step flow instead of a web UI — nothing is scheduled or automated.
+
 ## How it works
 
 ```
@@ -99,7 +109,10 @@ The month-filter injection is deliberately generic: it works the same way regard
 
 ```
 .
-├── app.py             # Streamlit app
-├── requirements.txt    # Python dependencies
+├── app.py               # Streamlit app (UI only)
+├── pipeline_core.py      # Shared BigQuery logic (no Streamlit dependency)
+├── colab_runner.ipynb    # Manual, notebook-based runner using pipeline_core.py
+├── requirements.txt      # Python dependencies
+├── CHANGELOG.md
 └── README.md
 ```

@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `pipeline_core.py`: extracted all BigQuery logic out of `app.py` into a Streamlit-independent module, so it can be reused elsewhere.
+- `colab_runner.ipynb`: manual, notebook-based runner (no scheduling) that reuses `pipeline_core.py` for one-off runs from Colab, authenticating via `google.colab.auth.authenticate_user()`.
+
 ### Planned
 
 - Support appending into the production `_cross` tables (currently `_dev` only).
