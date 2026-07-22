@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `pipeline_core.py`: extracted all BigQuery logic out of `app.py` into a Streamlit-independent module, so it can be reused elsewhere.
 - `colab_runner.ipynb`: manual, notebook-based runner (no scheduling) that reuses `pipeline_core.py` for one-off runs from Colab, authenticating via `google.colab.auth.authenticate_user()`.
+- `colab_runner.ipynb` section 7: optional batch mode that dry-runs and (after explicit confirmation) appends every client in `pipeline.client_query` for one chosen month in a single pass.
 
 ### Planned
 

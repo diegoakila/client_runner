@@ -74,6 +74,8 @@ The Streamlit app is meant for interactive, one-off use. If you'd rather run a c
 
 It reuses the exact same logic as the Streamlit app (both import `pipeline_core.py`), just with a notebook-shaped, step-by-step flow instead of a web UI — nothing is scheduled or automated.
 
+The notebook also has an optional **section 7, batch mode**: dry-runs every client in `pipeline.client_query` for one chosen month, shows a summary table (rows to append, existing rows for that month per client), and appends all of them only after you set `BATCH_CONFIRM = True`. It skips the per-client 50-row sample and query editing from the single-client flow — use it when you want to append the same month for every client at once instead of one at a time.
+
 ## How it works
 
 ```
