@@ -6,7 +6,8 @@ For each client (row in `pipeline.client_query`), lets a user:
   - pick which month to append
   - preview / edit the underlying query
   - dry-run (row count + bytes estimate + sample) before committing
-  - append the result into the client's `_dev` table
+  - delete any existing rows for that month, then append the fresh result into the
+    client's `_dev` table (no duplicates within a month; other months untouched)
 
 Auth: uses Application Default Credentials already set up on this machine
 (gcloud auth application-default login). No credentials are entered in this app.
@@ -33,7 +34,8 @@ def get_client():
 st.title("Magpie Client Pipeline Runner")
 st.caption(
     "Pick a client, pick the month to append, preview/edit the query, dry-run it, then run. "
-    "Run = append into that client's `_dev` table (not an overwrite)."
+    "Run = delete any existing rows for that month in the client's `_dev` table, then append the "
+    "fresh result (other months are untouched — this is not a full-table overwrite)."
 )
 
 bq = get_client()
@@ -130,8 +132,8 @@ if st.session_state.dry_run_ok and st.session_state.dry_run_signature == current
         m3.metric(
             f"Existing rows for {month_str} in dest",
             f"{st.session_state.dry_run_existing:,}",
-            delta="check for duplicates!",
-            delta_color="inverse",
+            delta="will be deleted & replaced",
+            delta_color="off",
         )
     elif st.session_state.dry_run_existing == 0:
         m3.metric(f"Existing rows for {month_str} in dest", "0")
@@ -139,28 +141,28 @@ if st.session_state.dry_run_ok and st.session_state.dry_run_signature == current
         m3.metric("Existing rows", "N/A")
 
     if st.session_state.dry_run_existing > 0:
-        st.warning(
+        st.info(
             f"There are already {st.session_state.dry_run_existing:,} rows for month {month_str} "
-            f"in `{dest_table}`. If you proceed, this month's data will be duplicated "
-            "(append does not delete existing data)."
+            f"in `{dest_table}`. Running will delete those rows first, then append the fresh result — "
+            "no duplicates within the month. Rows from other months are not affected."
         )
 
     st.write("Sample result (first 50 rows):")
     st.dataframe(st.session_state.dry_run_sample, use_container_width=True)
 
     with btn_col2:
-        if st.button("Run (Append to _dev)", type="primary"):
-            with st.spinner("Running append..."):
+        if st.button("Run (Replace month in _dev)", type="primary"):
+            with st.spinner("Deleting existing rows for this month, then appending..."):
                 try:
                     if query_changed:
                         core.save_edited_query(bq, client_name, country, dataset, dest_table, edited_query)
                         st.toast("Edited query saved as a new row in pipeline.client_query")
 
-                    job = core.append_to_dev(bq, scoped_query, dest_table)
+                    rows_deleted, job = core.replace_month(bq, scoped_query, dest_table, month_str)
+                    affected = job.num_dml_affected_rows if job.num_dml_affected_rows is not None else st.session_state.dry_run_rows
+                    deleted_note = f"deleted {rows_deleted:,} existing rows, " if rows_deleted > 0 else ""
                     st.success(
-                        f"Successfully appended "
-                        f"{job.num_dml_affected_rows if job.num_dml_affected_rows is not None else st.session_state.dry_run_rows:,} "
-                        f"rows into `{dest_table}` for month {month_str}."
+                        f"Done: {deleted_note}appended {affected:,} rows into `{dest_table}` for month {month_str}."
                     )
                     st.session_state.dry_run_ok = False
                 except GoogleAPIError as e:
@@ -168,7 +170,7 @@ if st.session_state.dry_run_ok and st.session_state.dry_run_signature == current
 else:
     with btn_col2:
         st.button(
-            "Run (Append to _dev)",
+            "Run (Replace month in _dev)",
             type="primary",
             disabled=True,
             help="Run Dry Run first (and make sure the query/month haven't changed since the dry-run).",

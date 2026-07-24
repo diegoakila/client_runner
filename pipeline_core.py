@@ -110,6 +110,21 @@ def save_edited_query(
     client.query(query, job_config=job_config).result()
 
 
+def delete_existing_month(client: bigquery.Client, dest_table: str, month_str: str) -> int:
+    """Delete rows for month_str from dest_table.
+
+    Returns the number of rows deleted, or -1 if dest_table doesn't exist yet
+    (nothing to delete — the table will simply be created on the following append).
+    """
+    query = f"DELETE FROM `{dest_table}` WHERE month = '{month_str}'"
+    try:
+        job = client.query(query)
+        job.result()
+        return job.num_dml_affected_rows or 0
+    except GoogleAPIError:
+        return -1
+
+
 def append_to_dev(client: bigquery.Client, scoped_query: str, dest_table: str):
     """Run scoped_query and append (WRITE_APPEND) its result into dest_table."""
     job_config = bigquery.QueryJobConfig(
@@ -119,3 +134,15 @@ def append_to_dev(client: bigquery.Client, scoped_query: str, dest_table: str):
     job = client.query(scoped_query, job_config=job_config)
     job.result()
     return job
+
+
+def replace_month(client: bigquery.Client, scoped_query: str, dest_table: str, month_str: str):
+    """Delete existing rows for month_str in dest_table, then append scoped_query's result.
+
+    This guarantees no duplicates within a single month while leaving every
+    other month in dest_table untouched (it is not a full-table overwrite).
+    Returns (rows_deleted, append_job).
+    """
+    rows_deleted = delete_existing_month(client, dest_table, month_str)
+    job = append_to_dev(client, scoped_query, dest_table)
+    return rows_deleted, job
