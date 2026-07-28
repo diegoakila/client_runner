@@ -26,7 +26,7 @@ def get_client(project_id: str = PROJECT_ID) -> bigquery.Client:
 def load_clients(client: bigquery.Client) -> pd.DataFrame:
     """Latest generated row per client, i.e. the current query/config for each client."""
     query = f"""
-        SELECT client, country, dataset, dest_table, query, generated_at
+        SELECT client, country, dataset, dest_table, dest_table_cross, query, generated_at
         FROM `{CLIENT_QUERY_TABLE}`
         QUALIFY ROW_NUMBER() OVER (PARTITION BY client ORDER BY generated_at DESC) = 1
         ORDER BY client
@@ -57,6 +57,16 @@ def build_scoped_query(base_query: str, month_str: str) -> str:
     """
     trimmed = base_query.strip().rstrip(";")
     return f"SELECT * FROM (\n{trimmed}\n) WHERE month = '{month_str}'"
+
+
+def build_promote_query(dev_table: str, month_str: str) -> str:
+    """Build the query that promotes one month from a client's `_dev` table to `_cross`.
+
+    Reads straight from the already-materialized `_dev` table (not by
+    re-running the original client query) so what lands in `_cross` is
+    guaranteed to be exactly what was reviewed/run in `_dev` for that month.
+    """
+    return f"SELECT * FROM `{dev_table}` WHERE month = '{month_str}'"
 
 
 def dry_run(client: bigquery.Client, scoped_query: str) -> int:

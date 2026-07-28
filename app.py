@@ -18,6 +18,7 @@ dependency), so it can also be reused from a Colab notebook for manual runs.
 
 import datetime
 
+import pandas as pd
 import streamlit as st
 from google.api_core.exceptions import GoogleAPIError
 
@@ -63,13 +64,15 @@ with col1:
 row = clients_df[clients_df["client"] == client_name].iloc[0]
 dataset = row["dataset"]
 dest_table = row["dest_table"]
+dest_table_cross = row["dest_table_cross"] if pd.notna(row["dest_table_cross"]) else None
 country = row["country"]
 base_query = row["query"]
 generated_at = row["generated_at"]
 
 with col2:
     st.metric("Dataset", dataset)
-    st.text(f"Dest table:\n{dest_table}")
+    st.text(f"Dev table:\n{dest_table}")
+    st.text(f"Cross table:\n{dest_table_cross or '(not configured)'}")
     st.caption(f"Query last generated: {generated_at}")
 
 month_date = st.date_input(
@@ -175,6 +178,101 @@ else:
             disabled=True,
             help="Run Dry Run first (and make sure the query/month haven't changed since the dry-run).",
         )
+
+st.divider()
+st.subheader("Promote to Production (_cross)")
+
+if not dest_table_cross:
+    st.info(
+        "No `_cross` destination is configured for this client yet. "
+        "Add a `dest_table_cross` value for it in `pipeline.client_query` to enable promoting."
+    )
+else:
+    dev_month_count = core.existing_month_count(bq, dest_table, month_str)
+    if dev_month_count in (0, -1):
+        st.warning(
+            f"No rows found in `_dev` (`{dest_table}`) for month {month_str} yet. "
+            "Run it into `_dev` above first, then come back to promote."
+        )
+    else:
+        st.caption(
+            f"Copies month {month_str} as-is from `_dev` (`{dest_table}`) into `_cross` "
+            f"(`{dest_table_cross}`) — it does not re-run the original query, so `_cross` is "
+            "guaranteed to match exactly what you already reviewed and ran into `_dev`."
+        )
+        promote_query = core.build_promote_query(dest_table, month_str)
+
+        with st.expander("View promote query"):
+            st.code(promote_query, language="sql")
+
+        if "promote_dry_run_ok" not in st.session_state:
+            st.session_state.promote_dry_run_ok = False
+            st.session_state.promote_dry_run_signature = None
+
+        promote_signature = (client_name, month_str, dest_table_cross)
+
+        pcol1, pcol2 = st.columns(2)
+
+        with pcol1:
+            if st.button("Dry Run (Promote Preview)", type="secondary"):
+                with st.spinner("Running dry-run..."):
+                    try:
+                        p_bytes = core.dry_run(bq, promote_query)
+                        p_rows = core.row_count(bq, promote_query)
+                        p_existing = core.existing_month_count(bq, dest_table_cross, month_str)
+                        p_sample = core.preview_rows(bq, promote_query, limit=50)
+
+                        st.session_state.promote_dry_run_ok = True
+                        st.session_state.promote_dry_run_signature = promote_signature
+                        st.session_state.promote_dry_run_bytes = p_bytes
+                        st.session_state.promote_dry_run_rows = p_rows
+                        st.session_state.promote_dry_run_existing = p_existing
+                        st.session_state.promote_dry_run_sample = p_sample
+                    except GoogleAPIError as e:
+                        st.session_state.promote_dry_run_ok = False
+                        st.error(f"Dry-run failed: {e}")
+
+        if st.session_state.promote_dry_run_ok and st.session_state.promote_dry_run_signature == promote_signature:
+            p_mb = st.session_state.promote_dry_run_bytes / (1024 ** 2)
+            pm1, pm2, pm3 = st.columns(3)
+            pm1.metric("Estimated data processed", f"{p_mb:,.1f} MB")
+            pm2.metric("Rows to be promoted", f"{st.session_state.promote_dry_run_rows:,}")
+            if st.session_state.promote_dry_run_existing > 0:
+                pm3.metric(
+                    f"Existing rows for {month_str} in _cross",
+                    f"{st.session_state.promote_dry_run_existing:,}",
+                    delta="will be deleted & replaced",
+                    delta_color="off",
+                )
+            elif st.session_state.promote_dry_run_existing == 0:
+                pm3.metric(f"Existing rows for {month_str} in _cross", "0")
+            else:
+                pm3.metric("Existing rows", "N/A")
+
+            st.write("Sample result (first 50 rows):")
+            st.dataframe(st.session_state.promote_dry_run_sample, use_container_width=True)
+
+            with pcol2:
+                if st.button("Promote to Cross (Replace month in _cross)", type="primary"):
+                    with st.spinner("Deleting existing rows for this month in _cross, then appending..."):
+                        try:
+                            rows_deleted, job = core.replace_month(bq, promote_query, dest_table_cross, month_str)
+                            affected = job.num_dml_affected_rows if job.num_dml_affected_rows is not None else st.session_state.promote_dry_run_rows
+                            deleted_note = f"deleted {rows_deleted:,} existing rows, " if rows_deleted > 0 else ""
+                            st.success(
+                                f"Done: {deleted_note}appended {affected:,} rows into `{dest_table_cross}` for month {month_str}."
+                            )
+                            st.session_state.promote_dry_run_ok = False
+                        except GoogleAPIError as e:
+                            st.error(f"Promote failed: {e}")
+        else:
+            with pcol2:
+                st.button(
+                    "Promote to Cross (Replace month in _cross)",
+                    type="primary",
+                    disabled=True,
+                    help="Run Dry Run (Promote Preview) first.",
+                )
 
 st.divider()
 st.subheader(f"Generation history for `{client_name}`")
