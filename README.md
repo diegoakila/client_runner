@@ -18,7 +18,7 @@ This tool replaces that manual process with a small, safe, reviewable UI.
 
 - **Client picker** — lists every client with a row in `pipeline.client_query`, loading its latest generated query, target dataset, and destination (`_dev`) table.
 - **Month picker** — the query stored in `pipeline.client_query` has no month filter baked in (it selects full history); this tool wraps it as `SELECT * FROM (<query>) WHERE month = '<picked month>'` at run time.
-- **Query preview & editing** — the full query is shown in an editable text area so you can tweak it before running. If you run an edited query, the edited version is saved as a new row in `pipeline.client_query` (keeping a full history of what actually ran).
+- **Query preview & editing** — the full query is shown in an editable text area so you can tweak it before running. An edited query is only ever persisted after a dry-run: either explicitly via **Save Query** (keeps the new version in `pipeline.client_query` without touching `_dev`), or automatically when you **Run** (saves it, then writes to `_dev`) — either way it's inserted as a new row, keeping a full history of every version.
 - **Mandatory dry-run** — before the "Run" button is enabled, you must dry-run the scoped query. Dry-run shows:
   - Estimated bytes processed (BigQuery dry-run estimate)
   - Row count that would be appended
@@ -61,9 +61,9 @@ This opens the app in your browser at `http://localhost:8501`.
 2. **Pick the month** you want to append.
 3. **Review or edit the query** in the text box. Expand "View scoped query" to see exactly what will run, including the injected month filter.
 4. Click **Dry Run (Preview)**. Check the estimated bytes processed, row count, and — importantly — whether rows for that month already exist in the destination table.
-5. If everything looks right, click **Run (Replace month in _dev)**. This deletes any existing rows for that month, then appends the fresh result into the client's `_dev` table.
+5. If you only want to keep an edited query for later without writing to `_dev` yet, click **Save Query**. If everything looks right and you want to run it now, click **Run (Replace month in _dev)** — it saves the edited query (if changed) and deletes+appends in one step.
 
-If you change anything about the query, the client, or the month after a dry-run, the "Run" button is disabled again until you re-run the dry-run — this prevents running a query you never actually previewed.
+If you change anything about the query, the client, or the month after a dry-run, both buttons are disabled again until you re-run the dry-run — this prevents saving or running a query you never actually previewed.
 
 6. Once `_dev` looks right, scroll to **Promote to Production (_cross)**. If the client has a `dest_table_cross` configured, click **Dry Run (Promote Preview)**, review the sample, then **Promote to Cross (Replace month in _cross)**. This deletes any existing rows for that month in `_cross`, then appends a copy of what's currently in `_dev` for that month.
 
@@ -74,7 +74,8 @@ The Streamlit app is meant for interactive, one-off use. If you'd rather run a c
 1. Open it in Colab (upload it, or open directly from GitHub via `File > Open notebook > GitHub` and paste the repo URL).
 2. Run the cells top to bottom. The first cell clones this repo and authenticates using your own Google account via Colab's built-in auth flow (`google.colab.auth.authenticate_user()`) — no credentials are stored in the notebook.
 3. Pick a client and month, review the dry-run output, then set `CONFIRM = True` in the last cell and re-run it to actually run (delete + append).
-4. Optionally, once that month is in `_dev`, use section 6b to promote it to `_cross` the same way — review the dry-run output, then set `PROMOTE_CONFIRM = True` and re-run the cell.
+4. If you only want to save an edited query without running it, use section 5b instead — set `SAVE_QUERY = True` and re-run that cell.
+5. Optionally, once that month is in `_dev`, use section 6b to promote it to `_cross` the same way — review the dry-run output, then set `PROMOTE_CONFIRM = True` and re-run the cell.
 
 It reuses the exact same logic as the Streamlit app (both import `pipeline_core.py`), just with a notebook-shaped, step-by-step flow instead of a web UI — nothing is scheduled or automated.
 

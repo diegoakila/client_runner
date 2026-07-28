@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `colab_runner.ipynb`: manual, notebook-based runner (no scheduling) that reuses `pipeline_core.py` for one-off runs from Colab, authenticating via `google.colab.auth.authenticate_user()`.
 - `colab_runner.ipynb` section 7: optional batch mode that dry-runs and (after explicit confirmation) runs every client in `pipeline.client_query` for one chosen month in a single pass.
 - **Promote to Cross**: a new `dest_table_cross` column on `pipeline.client_query` plus a "Promote to Production (_cross)" step in the Streamlit app and a "6b" section in `colab_runner.ipynb`. Copies a month as-is from `_dev` into `_cross` (does not re-run the original query), gated by the same mandatory dry-run and delete-then-append idempotency as the `_dev` run. Clients without `dest_table_cross` set don't show the option. Backfilled `dest_table_cross` for the 17 existing production clients.
+- **Save Query**: a "Save Query" button in the Streamlit app and a "5b" section in `colab_runner.ipynb`, letting you persist an edited query as a new row in `pipeline.client_query` without writing anything to `_dev`. Gated behind the same mandatory dry-run as Run, so an unreviewed query can never become the new "current" version.
 
 ### Changed
 

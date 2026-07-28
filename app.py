@@ -88,8 +88,9 @@ edited_query = st.text_area("Base query", value=base_query, height=350)
 query_changed = edited_query.strip() != base_query.strip()
 if query_changed:
     st.info(
-        "This query has been edited from the saved version. Running it will save the new "
-        "version as a new row in `pipeline.client_query`."
+        "This query has been edited from the saved version. Dry-run it below, then either "
+        "**Save Query** (keeps the new version in `pipeline.client_query` without touching `_dev`) "
+        "or **Run** (saves it and writes to `_dev` in one step)."
     )
 
 scoped_query = core.build_scoped_query(edited_query, month_str)
@@ -105,7 +106,7 @@ if "dry_run_ok" not in st.session_state:
 
 current_signature = (client_name, month_str, edited_query)
 
-btn_col1, btn_col2 = st.columns(2)
+btn_col1, btn_col2, btn_col3 = st.columns(3)
 
 with btn_col1:
     if st.button("Dry Run (Preview)", type="secondary"):
@@ -154,6 +155,15 @@ if st.session_state.dry_run_ok and st.session_state.dry_run_signature == current
     st.dataframe(st.session_state.dry_run_sample, use_container_width=True)
 
     with btn_col2:
+        if st.button("Save Query", type="secondary", disabled=not query_changed):
+            try:
+                core.save_edited_query(bq, client_name, country, dataset, dest_table, edited_query)
+                st.toast("Edited query saved as a new row in pipeline.client_query")
+                st.success("Query saved to `pipeline.client_query` (nothing was written to `_dev`).")
+            except GoogleAPIError as e:
+                st.error(f"Save failed: {e}")
+
+    with btn_col3:
         if st.button("Run (Replace month in _dev)", type="primary"):
             with st.spinner("Deleting existing rows for this month, then appending..."):
                 try:
@@ -172,6 +182,13 @@ if st.session_state.dry_run_ok and st.session_state.dry_run_signature == current
                     st.error(f"Run failed: {e}")
 else:
     with btn_col2:
+        st.button(
+            "Save Query",
+            type="secondary",
+            disabled=True,
+            help="Run Dry Run first (and make sure the query/month haven't changed since the dry-run).",
+        )
+    with btn_col3:
         st.button(
             "Run (Replace month in _dev)",
             type="primary",
